@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# builds
+dist/
+build/
+out/
+.next/
+.expo/
+web-build/
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+.turbo/
+
+# prisma client được sinh ra + file upload khi dev
+apps/api/src/generated/
+apps/api/storage/
+
+# env
+.env
+.env.*
+!.env.example
+
+# native (Expo CNG)
+apps/mobile/ios/
+apps/mobile/android/
+
+# misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+.pnpm-debug.log*
+.vscode/*
+!.vscode/extensions.json
+.idea/

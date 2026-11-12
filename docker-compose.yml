@@ -1,0 +1,58 @@
+# Hạ tầng dev cho EduForge.
+#   pnpm infra:up                      → PostgreSQL + pgvector, Redis (đủ để chạy API)
+#   docker compose --profile s3 up -d  → thêm server S3 (MinIO) nếu muốn dùng STORAGE_DRIVER=s3
+name: eduforge
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17-trixie
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-eduforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eduforge}
+      POSTGRES_DB: ${POSTGRES_DB:-eduforge}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-eduforge} -d ${POSTGRES_DB:-eduforge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.6-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Tùy chọn. Image chính thức minio/minio đã bị gỡ khỏi Docker Hub; pgsty/minio là bản build
+  # cộng đồng của MinIO (cùng lệnh, cùng biến môi trường). Bucket được API tự tạo khi khởi động.
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    profiles: ["s3"]
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-eduforge}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-eduforge123}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:

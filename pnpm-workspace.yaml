@@ -1,0 +1,22 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10 chặn script cài đặt mặc định – chỉ cho phép các gói cần build.
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - "@swc/core"
+  - esbuild
+  - prisma
+  - sharp
+  - unrs-resolver
+
+# Không cần chạy script build của các gói này (đã có bản dựng sẵn / chỉ là telemetry).
+ignoredBuiltDependencies:
+  - "@scarf/scarf"
+  - msgpackr-extract
+
+# React Native / Expo (Metro) hoạt động ổn định nhất với node_modules dạng hoisted.
+# (Đặt ở đây thay cho .npmrc – pnpm 10 đọc cấu hình từ pnpm-workspace.yaml.)
+nodeLinker: hoisted
+autoInstallPeers: true

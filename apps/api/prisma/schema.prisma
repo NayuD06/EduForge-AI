@@ -1,0 +1,339 @@
+// EduForge – Prisma schema (PostgreSQL + pgvector)
+// Sau khi sửa file này: pnpm db:migrate (tạo migration) → client tự sinh lại.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────── Người dùng ─────────────────────────
+
+enum Role {
+  ADMIN
+  INSTRUCTOR
+  STUDENT
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         Role     @default(STUDENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courses       Course[]       @relation("CourseInstructor")
+  enrollments   Enrollment[]
+  questionBanks QuestionBank[]
+  attempts      ExamAttempt[]
+  documents     Document[]
+}
+
+// ───────────────────────── Khóa học ─────────────────────────
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Course {
+  id           String       @id @default(uuid())
+  title        String
+  slug         String       @unique
+  description  String?
+  coverUrl     String?
+  status       CourseStatus @default(DRAFT)
+  instructorId String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  instructor    User           @relation("CourseInstructor", fields: [instructorId], references: [id])
+  lessons       Lesson[]
+  enrollments   Enrollment[]
+  exams         Exam[]
+  questionBanks QuestionBank[]
+  documents     Document[]
+
+  @@index([instructorId])
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  courseId    String
+  title       String
+  content     String   @default("") // Markdown
+  videoUrl    String?
+  order       Int      @default(0)
+  durationMin Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, order])
+}
+
+model Enrollment {
+  userId    String
+  courseId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, courseId])
+}
+
+// ───────────────────────── Ngân hàng câu hỏi ─────────────────────────
+
+enum QuestionType {
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  NUMERIC
+  MATCHING
+  ORDERING
+  ESSAY
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum QuestionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum QuestionSource {
+  MANUAL
+  AI
+}
+
+model QuestionBank {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  courseId    String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  course    Course?    @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  owner     User       @relation(fields: [ownerId], references: [id])
+  questions Question[]
+  rules     ExamRule[]
+
+  @@index([courseId])
+}
+
+model Question {
+  id               String         @id @default(uuid())
+  bankId           String
+  type             QuestionType
+  difficulty       Difficulty     @default(MEDIUM)
+  status           QuestionStatus @default(ACTIVE)
+  source           QuestionSource @default(MANUAL)
+  content          String // Markdown
+  /// Dữ liệu hiển thị (choices, cặp ghép, ...) – xem QuestionPayloadMap trong @eduforge/shared
+  options          Json           @default("{}")
+  /// Đáp án / khóa chấm – không bao giờ trả về cho thí sinh khi đang thi
+  answer           Json
+  explanation      String?
+  tags             String[]       @default([])
+  points           Float          @default(1)
+  sourceDocumentId String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  bank             QuestionBank      @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  sourceDocument   Document?         @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+  examQuestions    ExamQuestion[]
+  attemptQuestions AttemptQuestion[]
+
+  @@index([bankId, status, type, difficulty])
+}
+
+// ───────────────────────── Exam Engine ─────────────────────────
+
+enum ExamMode {
+  FIXED
+  RANDOM
+}
+
+enum ExamStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+model Exam {
+  id               String     @id @default(uuid())
+  courseId         String
+  title            String
+  description      String?
+  mode             ExamMode   @default(RANDOM)
+  status           ExamStatus @default(DRAFT)
+  durationSec      Int
+  passingPercent   Float      @default(50)
+  maxAttempts      Int        @default(0) // 0 = không giới hạn
+  shuffleQuestions Boolean    @default(true)
+  shuffleOptions   Boolean    @default(true)
+  showResult       Boolean    @default(true)
+  startAt          DateTime?
+  endAt            DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rules     ExamRule[]
+  questions ExamQuestion[]
+  attempts  ExamAttempt[]
+
+  @@index([courseId])
+}
+
+/// Quy tắc sinh đề ngẫu nhiên: rút `count` câu từ `bank` thỏa bộ lọc.
+model ExamRule {
+  id                String        @id @default(uuid())
+  examId            String
+  bankId            String
+  count             Int
+  type              QuestionType?
+  difficulty        Difficulty?
+  tags              String[]      @default([])
+  pointsPerQuestion Float?
+  order             Int           @default(0)
+
+  exam Exam         @relation(fields: [examId], references: [id], onDelete: Cascade)
+  bank QuestionBank @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  @@index([examId])
+}
+
+/// Câu hỏi của đề cố định (mode = FIXED).
+model ExamQuestion {
+  examId     String
+  questionId String
+  order      Int
+  points     Float?
+
+  exam     Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@id([examId, questionId])
+}
+
+enum AttemptStatus {
+  IN_PROGRESS
+  SUBMITTED
+  GRADED
+}
+
+model ExamAttempt {
+  id            String        @id @default(uuid())
+  examId        String
+  userId        String
+  status        AttemptStatus @default(IN_PROGRESS)
+  /// Seed dùng để xáo trộn – tái lập được đề đã phát
+  seed          Int
+  startedAt     DateTime      @default(now())
+  expiresAt     DateTime
+  submittedAt   DateTime?
+  autoSubmitted Boolean       @default(false)
+  lastSavedAt   DateTime?
+  score         Float?
+  maxScore      Float         @default(0)
+  percent       Float?
+  passed        Boolean?
+
+  exam      Exam              @relation(fields: [examId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions AttemptQuestion[]
+
+  @@index([examId, userId])
+  @@index([status, expiresAt])
+}
+
+model AttemptQuestion {
+  id                 String    @id @default(uuid())
+  attemptId          String
+  questionId         String
+  order              Int
+  points             Float
+  /// Thứ tự options sau khi xáo trộn (id các lựa chọn)
+  optionOrder        Json?
+  /// Câu trả lời của thí sinh (tự động lưu tiến trình)
+  response           Json?
+  flagged            Boolean   @default(false)
+  answeredAt         DateTime?
+  isCorrect          Boolean?
+  score              Float?
+  needsManualGrading Boolean   @default(false)
+  /// Giải thích do AI sinh ra (cache)
+  aiExplanation      Json?
+
+  attempt  ExamAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([questionId])
+}
+
+// ───────────────────────── Tài liệu & AI (RAG) ─────────────────────────
+
+enum DocumentStatus {
+  UPLOADED
+  PROCESSING
+  READY
+  FAILED
+}
+
+model Document {
+  id           String         @id @default(uuid())
+  courseId     String
+  uploadedById String
+  title        String
+  fileKey      String // key trong bucket S3/MinIO
+  mimeType     String
+  sizeBytes    Int
+  status       DocumentStatus @default(UPLOADED)
+  pageCount    Int?
+  error        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  course     Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  uploadedBy User            @relation(fields: [uploadedById], references: [id])
+  chunks     DocumentChunk[]
+  questions  Question[]
+
+  @@index([courseId])
+}
+
+model DocumentChunk {
+  id         String                       @id @default(uuid())
+  documentId String
+  index      Int
+  page       Int?
+  content    String
+  /// Embedding 1024 chiều (Voyage) – truy vấn bằng SQL thô với toán tử <=> của pgvector
+  embedding  Unsupported("vector(1024)")?
+  createdAt  DateTime                     @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, index])
+}

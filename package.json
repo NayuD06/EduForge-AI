@@ -1,0 +1,36 @@
+{
+  "name": "eduforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EduForge – nền tảng xây dựng khóa học và thi trực tuyến (monorepo)",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup:env": "node scripts/setup-env.mjs",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f",
+    "dev": "turbo run dev --filter=!@eduforge/mobile",
+    "dev:api": "turbo run dev --filter=@eduforge/api...",
+    "dev:web": "turbo run dev --filter=@eduforge/web...",
+    "dev:admin": "turbo run dev --filter=@eduforge/admin...",
+    "dev:mobile": "pnpm --filter @eduforge/shared build && pnpm --filter @eduforge/mobile start",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @eduforge/api db:generate",
+    "db:migrate": "pnpm --filter @eduforge/api db:migrate",
+    "db:deploy": "pnpm --filter @eduforge/api db:deploy",
+    "db:seed": "pnpm --filter @eduforge/api db:seed",
+    "db:studio": "pnpm --filter @eduforge/api db:studio",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "turbo": "^2.11.11",
+    "typescript": "~6.0.3"
+  }
+}

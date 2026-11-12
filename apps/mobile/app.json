@@ -1,0 +1,14 @@
+{
+  "expo": {
+    "name": "EduForge",
+    "slug": "eduforge",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "eduforge",
+    "userInterfaceStyle": "automatic",
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
